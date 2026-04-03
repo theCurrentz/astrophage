@@ -3,6 +3,14 @@ import * as THREE from "three";
 
 const maxTilt = 0.18;
 
+/**
+ * **Device orientation → small rotation offset.** Beta/gamma are angles (degrees)
+ * from the DeviceOrientationEvent; we convert to radians and build an Euler, then
+ * a Quaternion. **Slerp** (spherical lerp) smooths jitter so the swarm does not buzz.
+ *
+ * iOS 13+ may require `DeviceOrientationEvent.requestPermission()` after a gesture—
+ * handled in the async IIFE before subscribing.
+ */
 export function useParallax(delta: RefObject<THREE.Quaternion>) {
   const target = useRef(new THREE.Quaternion());
   const euler = useRef(new THREE.Euler(0, 0, 0, "YXZ"));

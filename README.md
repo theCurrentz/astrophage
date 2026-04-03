@@ -1,46 +1,90 @@
 # Astrophage
 
-Fake-AR web experience: a dense, red, bioluminescent particle band over the device camera. Built with **Vite**, **React 19**, **TypeScript**, **Three.js**, and **React Three Fiber**.
+A **fake AR** web demo: a dense, red, glowing particle band drawn **on top of your phone camera** (or desktop webcam). No app install—just the browser.
 
-## Run
+If you are new to 3D graphics, read this file top to bottom once; the code comments repeat the same ideas next to the implementation.
+
+---
+
+## 3D in one minute (novice-friendly)
+
+- **Scene graph** — A tree of objects (groups, meshes, lights). Each has position, rotation, scale. Parent transforms apply to children.
+- **Mesh** — Geometry (triangles) + material (how pixels are colored).
+- **Camera** — Defines **view** (where you stand) and **projection** (perspective: distant things look smaller).
+- **Rasterization** — The GPU turns triangles into pixels. For each pixel the **fragment shader** runs (possibly thousands of times per frame).
+- **Frame loop** — Typically 60 updates per second: move things, draw, repeat.
+
+This project adds:
+
+- **Instancing** — Draw the *same* quad many times with different positions in one GPU call.
+- **Shaders** — Small programs on the GPU: **vertex** (move vertices) and **fragment** (color pixels).
+- **Post-processing** — Extra image passes after the 3D scene (here: **bloom** glow + **tone mapping**).
+
+---
+
+## What you see on screen (stacking order)
+
+1. **Bottom:** Full-screen HTML `<video>` showing the camera feed.
+2. **Top:** A **transparent WebGL canvas** (`alpha: true`). Where nothing is drawn, you see the video. Where particles are drawn, you see red additive glow.
+
+That is **fake AR**: we are not mapping objects onto real-world surfaces; we overlay graphics like a heads-up display.
+
+---
+
+## Run locally
 
 ```bash
 pnpm install
 pnpm dev
 ```
 
-Open on desktop or iPhone Safari. Tap **Enter Astrophage** to request the camera (required on iOS).
+On iPhone Safari you must tap **Enter Astrophage** so the browser allows camera access (and orientation on some iOS versions).
 
-## What you are looking at
+---
 
-1. **Camera layer** — A full-screen `<video>` from `getUserMedia` sits behind the canvas (`alpha: true` so the feed shows through).
-2. **Instanced billboards** — Each “particle” is a small quad, always facing the camera. One draw call, many instances. Spheres would cost more fill rate and are harder to shape as soft glows.
-3. **Simulation** — CPU-side vectors per particle: curl-noise drift (organic motion), light cohesion toward the swarm center, touch repulsion, and band constraints. No heavy physics engine.
-4. **Shaders** — `RawShaderMaterial` vertex shader places each instance and adds wobble; fragment shader does radial falloff, pulse, density, additive color. **Additive blending** makes overlaps read as brighter plasma.
-5. **Post** — Bloom (mipmap blur) plus **ACES Filmic** tone mapping so highlights roll off smoothly instead of clipping white.
+## Deploy to GitHub Pages
 
-## Performance
+This repo includes **GitHub Actions** (`.github/workflows/pages.yml`) that:
 
-`usePerformanceScaler` samples frame rate and adjusts particle count, bloom strength, and max DPR (via `Canvas` `dpr={[1, cap]}`). Target 60fps; falls back toward 30fps on slower GPUs.
+1. Builds the Vite app with `VITE_BASE=/<repository-name>/` so asset URLs work on **Project Pages** (`https://<user>.github.io/<repo>/`).
+2. Uploads `dist/` to GitHub Pages.
 
-## Visual reference
+**Enable it once in the repo:** Settings → Pages → **Build and deployment** → Source: **GitHub Actions**.
 
-Add `public/astrophage.webp` (your concept art) for local comparison; the scene does not load it at runtime—it is the artistic target for tuning shaders and counts.
+Pushes to `main` trigger a deploy. After the first successful run, open the site URL shown in the workflow / Pages settings.
+
+**Note:** Camera and device orientation may require **HTTPS** (GitHub Pages provides that). Some browsers block camera on insecure origins.
+
+---
 
 ## Project layout
 
 | Path | Role |
 |------|------|
-| `src/App.tsx` | Camera UI, Canvas, parallax group, touch plane |
-| `src/components/AstrophageField.tsx` | Instanced mesh, material, composer |
-| `src/systems/particleSystem.ts` | Particle data, band init, simulation step |
-| `src/shaders/*.glsl` | Vertex / fragment GLSL |
-| `src/hooks/` | Camera, parallax, interaction, FPS scaler |
+| `src/App.tsx` | Stacks video + R3F canvas; explains fake AR and canvas flags |
+| `src/Scene.tsx` | Parallax group + invisible touch plane |
+| `src/components/AstrophageField.tsx` | Instanced mesh, shaders, post stack |
+| `src/systems/particleSystem.ts` | CPU motion: curl noise, cohesion, touch |
+| `src/shaders/*.glsl` | GPU: billboards, glow, sprite falloff |
+| `src/hooks/` | Camera, pointer→3D, gyro, FPS scaler |
+| `vite.config.ts` | `base` from `VITE_BASE` for GitHub Pages |
 
-## Glossary
+---
 
-- **Billboard** — Quad oriented to face the camera every frame (here via view-space offset in the vertex shader).
-- **Instancing** — One geometry, GPU repeats it per instance with different attributes (position, size, seed).
-- **Curl noise** — Vector field with no divergence “sources”; good for swirly, fluid-like motion.
-- **Bloom** — Blur of bright pixels, blended back—reads as glow and haze around emissive areas.
-- **Fake AR** — Camera passthrough + 3D overlay; no SLAM or world anchors (per MVP).
+## Glossary (short)
+
+| Term | Meaning |
+|------|--------|
+| **Billboard** | A quad that always faces the camera—good for particles and lens flares. |
+| **NDC** | Normalized Device Coordinates: X and Y from −1 to 1 across the viewport; used to cast rays from mouse/touch. |
+| **Raycast** | Shoot a ray from the camera through a pixel; intersect with geometry or a mathematical plane. |
+| **Instancing** | One draw call renders many copies of the same mesh with per-instance attributes. |
+| **Curl noise** | A smooth vector field that swirls like fluid—nice for organic motion. |
+| **Bloom** | Blur bright pixels and add them back—reads as glow around emissive content. |
+| **Tone mapping** | Map HDR-style brightness into the 0–1 range your screen can display (ACES ≈ film-like). |
+
+---
+
+## Visual reference
+
+Add `public/astrophage.webp` (concept art) locally if you want a still reference beside the running app; the runtime does not depend on it.

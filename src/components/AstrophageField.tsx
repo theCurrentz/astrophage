@@ -14,6 +14,15 @@ type Props = {
   bloom: number;
 };
 
+/**
+ * Draws thousands of **instanced** quads in one draw call.
+ *
+ * **Instancing:** GPU repeats the same triangle list `instanceCount` times. Each instance
+ * reads different attributes (offset, size, …). Much faster than one mesh per particle.
+ *
+ * **RawShaderMaterial:** we supply full GLSL (Three’s built-in chunks are not prepended).
+ * Trade-off: a few more uniform declarations, total control over the pipeline.
+ */
 export function AstrophageField({ count, touchWorld, touchActive, bloom }: Props) {
   const mesh = useRef<THREE.Mesh>(null);
   const particles = useRef<Particle[]>([]);
@@ -44,6 +53,7 @@ export function AstrophageField({ count, touchWorld, touchActive, bloom }: Props
         fragmentShader: frag,
         uniforms: { uTime: { value: 0 } },
         transparent: true,
+        // Additive glow: skip depth write so layers stack visually (ordering is approximate).
         depthWrite: false,
         blending: THREE.AdditiveBlending,
       }),
@@ -52,6 +62,7 @@ export function AstrophageField({ count, touchWorld, touchActive, bloom }: Props
 
   useEffect(() => {
     const m = mesh.current;
+    // Let pointer events hit the invisible plane behind us, not this dense particle cloud.
     if (m) m.raycast = () => {};
   }, []);
 
@@ -90,6 +101,11 @@ export function AstrophageField({ count, touchWorld, touchActive, bloom }: Props
   return (
     <>
       <mesh ref={mesh} geometry={geom} material={mat} frustumCulled={false} renderOrder={1} />
+      {/*
+        Post stack runs after the scene render:
+        - Bloom: blur bright pixels and add them back → glow / “volumetric” read.
+        - Tone mapping: squeeze HDR brightness into display range (ACES filmic = film-like rolloff).
+      */}
       <EffectComposer multisampling={0}>
         <Bloom intensity={bloom} luminanceThreshold={0.15} mipmapBlur radius={0.92} />
         <ToneMapping mode={ToneMappingMode.ACES_FILMIC} whitePoint={4.2} middleGrey={0.62} />

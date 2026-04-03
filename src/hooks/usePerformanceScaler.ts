@@ -2,6 +2,14 @@ import { useEffect, useRef, useState } from "react";
 
 type Tier = { particleCount: number; bloom: number; dprCap: number };
 
+/**
+ * **Adaptive quality:** measures rough FPS over 500ms windows, then nudges:
+ * - fewer/more **instances** (biggest cost),
+ * - bloom **intensity** (blur passes cost GPU),
+ * - **device pixel ratio** cap (fewer pixels shaded = higher FPS on Retina).
+ *
+ * This is a heuristic, not a formal benchmark—good enough to keep mobile web usable.
+ */
 export function usePerformanceScaler() {
   const [tier, setTier] = useState<Tier>({ particleCount: 900, bloom: 1.5, dprCap: 2 });
   const acc = useRef(0);

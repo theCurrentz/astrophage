@@ -1,6 +1,14 @@
 import { useCallback, useRef, type RefObject } from "react";
 import * as THREE from "three";
 
+/**
+ * Maps **screen pointer** → **3D point** usable by the particle sim.
+ *
+ * **Raycasting:** NDC (−1…1) + camera → a ray into the scene. We intersect that ray
+ * with a plane facing the camera at fixed distance—like aiming at an invisible window
+ * in front of you. **worldToLocal** converts that hit into the parallax group’s space
+ * so “push” forces match where particles actually live.
+ */
 export function useInteraction(
   camera: THREE.Camera,
   localTarget: RefObject<THREE.Vector3>,

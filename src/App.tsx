@@ -5,15 +5,31 @@ import { Scene } from "./Scene";
 import { useCamera } from "./hooks/useCamera";
 import { usePerformanceScaler } from "./hooks/usePerformanceScaler";
 
+/**
+ * Root UI: stacks the real-world camera (2D video) under the WebGL layer.
+ *
+ * **Fake AR:** we are not using WebXR or plane tracking. The illusion is:
+ * (1) live video fills the screen, (2) a transparent 3D canvas draws glowing particles
+ * on top. Your brain merges them like a glass plate with stickers—no depth sensing.
+ */
 export function App() {
   const { videoRef, ready, error, start } = useCamera();
   const [started, setStarted] = useState(false);
+
+  // Mutable refs: simulation reads these every frame without React re-renders.
+  // touchWorld lives in the same space as particle positions (Scene group local space).
   const touchWorld = useRef(new THREE.Vector3());
   const touchActive = useRef(false);
+
   const { particleCount, bloom, dprCap } = usePerformanceScaler();
 
   return (
     <div style={{ position: "fixed", inset: 0, background: "#0a0000" }}>
+      {/*
+        Standard HTML video: decoded GPU frames shown as a 2D rectangle.
+        It sits *behind* the canvas (lower z-index). WebGL draws on top with alpha=0
+        where there are no particles, so the camera shows through.
+      */}
       <video
         ref={videoRef}
         playsInline
@@ -59,6 +75,12 @@ export function App() {
           {error}
         </p>
       )}
+      {/*
+        React Three Fiber creates: WebGLRenderer + PerspectiveCamera + scene graph.
+        - dpr: device pixel ratio cap = sharper on retina but more fragment work.
+        - alpha: true = clear color is transparent so video is visible.
+        - antialias: false saves GPU; bloom softens edges anyway.
+      */}
       <Canvas
         dpr={[1, dprCap]}
         gl={{ alpha: true, antialias: false, powerPreference: "high-performance" }}

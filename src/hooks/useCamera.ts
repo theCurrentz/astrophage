@@ -1,5 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
+/**
+ * Bridges the browser **MediaDevices** API to a `<video>` element.
+ *
+ * **Why video + WebGL:** the GPU texture path from `getUserMedia` to WebGL is heavier
+ * and not required here—we only need pixels behind a transparent canvas. A plain video
+ * tag is simpler and widely supported on mobile Safari.
+ */
 export function useCamera() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [ready, setReady] = useState(false);

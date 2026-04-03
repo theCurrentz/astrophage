@@ -1,5 +1,10 @@
 import * as THREE from "three";
 
+/**
+ * One simulated agent. CPU updates positions; GPU only reads `aOffset` each frame.
+ * **Velocity integration:** classic game physics—forces accumulate into `velocity`,
+ * then `position += velocity * dt` (see `stepParticles`).
+ */
 export type Particle = {
   position: THREE.Vector3;
   velocity: THREE.Vector3;
@@ -13,11 +18,13 @@ const center = new THREE.Vector3();
 const noiseScratch = new THREE.Vector3();
 const curlIn = new THREE.Vector3();
 
+/** Deterministic pseudo-random in [0,1) from integer lattice coords (value noise building block). */
 function hash3(x: number, y: number, z: number) {
   const s = Math.sin(x * 127.1 + y * 311.7 + z * 74.7) * 43758.5453;
   return s - Math.floor(s);
 }
 
+/** Smooth 3D value noise: interpolate random values at cube corners (trilinear blend). */
 function noise3(p: THREE.Vector3) {
   const i = new THREE.Vector3(Math.floor(p.x), Math.floor(p.y), Math.floor(p.z));
   const f = new THREE.Vector3(p.x - i.x, p.y - i.y, p.z - i.z);
@@ -39,6 +46,11 @@ function noise3(p: THREE.Vector3) {
   return THREE.MathUtils.lerp(nxy0, nxy1, u.z) * 2 - 1;
 }
 
+/**
+ * **Curl noise:** take derivatives of scalar noise along each axis and assemble a vector.
+ * Intuition: the field “swirls” like fluid because divergence is near zero—no sources/sinks,
+ * so motion looks organic instead of all particles rushing one direction.
+ */
 function curl(p: THREE.Vector3, out: THREE.Vector3, t: number) {
   const e = 0.12;
   const n1 = noise3(tmp.set(p.x, p.y + e, p.z + t));
@@ -51,6 +63,7 @@ function curl(p: THREE.Vector3, out: THREE.Vector3, t: number) {
   return out;
 }
 
+/** Spawn a thin **Gaussian band** in Y so the swarm reads as a ribbon in front of the camera. */
 export function createBandParticles(count: number): Particle[] {
   const particles: Particle[] = [];
   for (let i = 0; i < count; i++) {
@@ -70,6 +83,13 @@ export function createBandParticles(count: number): Particle[] {
   return particles;
 }
 
+/**
+ * One simulation tick. Order of forces matters visually:
+ * 1) drift (curl) — global flow
+ * 2) cohesion — mild pull toward centroid so the cloud does not evaporate
+ * 3) touch repulsion — push away from pointer in 3D
+ * 4) damping + integration + soft box clamp
+ */
 export function stepParticles(
   particles: Particle[],
   dt: number,
