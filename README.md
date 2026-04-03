@@ -1,8 +1,8 @@
 # Astrophage — build tutorial
 
-This document walks through **how** this project was put together. It assumes you are comfortable with **React** and have used **Three.js** a little (scenes, meshes, maybe `requestAnimationFrame`). We build ideas in order—from the app shell to the more advanced GPU pieces—so you can map each section to folders in the repo.
+This document walks through **how** this project was put together. It assumes you are comfortable with **React** and have used **Three.js** a little (scenes, meshes, maybe `requestAnimationFrame`). Ideas are ordered from the app shell toward GPU details so you can match sections to files.
 
-**What you are building:** a “fake AR” view: the device camera fills the screen, and a **dense ribbon of glowing red particles** is drawn on top. It feels physical because of motion, touch reaction, and glow—not because we track the real world (no WebXR plane detection here).
+**What you are building:** a **3D first-person** fly-through of a dense, glowing red **particle band** (the “astrophage”). You **click to capture the mouse** (pointer lock), then use **WASD** to move and the mouse to look around—classic web FPS controls. There is **no** device camera and **no** AR.
 
 ---
 
@@ -10,164 +10,128 @@ This document walks through **how** this project was put together. It assumes yo
 
 | You already know | We will add |
 |------------------|-------------|
-| React components, hooks, refs | Using **refs** to pass stable handles into the render loop (no re-render per frame) |
+| React components, hooks, refs | Driving the **camera** from `useFrame` + keyboard state |
 | `THREE.Scene`, `PerspectiveCamera`, `Mesh` | **React Three Fiber (R3F)** as a React renderer for Three.js |
 | Materials | **Custom shaders** (`RawShaderMaterial`) and **instancing** |
-| Maybe nothing about post | **EffectComposer**: bloom + tone mapping as extra render passes |
+| Maybe nothing about post | **EffectComposer**: bloom + tone mapping |
 
 **Words we use a lot:**
 
-- **Scene graph** — Tree of `Object3D`s (groups, meshes). Parent transform applies to children.
-- **Draw call** — One submission to the GPU (“draw this geometry with this material”). Fewer is usually faster.
-- **Fragment shader** — Runs per pixel (per covered fragment). **Vertex shader** — Runs per vertex.
+- **Scene graph** — Tree of `Object3D`s. Parent transform applies to children.
+- **Draw call** — One GPU submission (“draw this geometry with this material”). Fewer is usually faster.
+- **Fragment shader** — Runs per pixel. **Vertex shader** — Runs per vertex.
+- **Pointer lock** — Browser API: hides the cursor and sends relative mouse motion so you can implement “mouse look” without the pointer leaving the window.
 
 ---
 
 ## Part 1 — Project shell: Vite + React + TypeScript
 
-We use **Vite** for fast dev server and production bundling. TypeScript catches mistakes when we wire Three types (vectors, refs) into React.
+We use **Vite** for dev server and production bundling. TypeScript helps when wiring Three types into React.
 
-**Why pnpm:** deterministic installs; same as any modern JS project.
+**Why pnpm:** deterministic installs.
 
 At this layer there is no 3D yet—only `main.tsx` mounting `<App />`.
 
 ---
 
-## Part 2 — Fake AR: stacking video under WebGL
+## Part 2 — Full-screen 3D: one canvas, opaque background
 
-**Goal:** Show the camera behind the effect.
+**Goal:** A single WebGL canvas fills the viewport. The scene is a **dark void** (`<color attach="background" />`) so the additive red particles read as emissive fog.
 
-1. **HTML `<video>`** — We attach a `MediaStream` from `navigator.mediaDevices.getUserMedia`. The video element is a normal 2D layer: full screen, `object-fit: cover`.
-2. **`<Canvas>` from R3F** — Sits above the video (`z-index`). It creates a `WebGLRenderer` with **`alpha: true`** so the default clear is **transparent**. Pixels we do not draw show the video through.
-
-This is **not** WebXR AR. We are not aligning models to floors or tables. We are doing **compositing**: video + transparent WebGL, like a HUD. See `useCamera.ts` and `App.tsx`.
-
-**iOS note:** Camera (and sometimes orientation) must be triggered after a **user gesture**, hence the “Enter Astrophage” button calling `start()`.
+There is **no** `<video>`, **no** `getUserMedia`, **no** transparent canvas. The camera is the default R3F **PerspectiveCamera** (configured in `App.tsx`).
 
 ---
 
 ## Part 3 — React Three Fiber: React as a scene graph API
 
-In plain Three.js you write:
-
-```js
-const mesh = new THREE.Mesh(geometry, material);
-scene.add(mesh);
-```
-
-**R3F** lets you describe the same thing declaratively:
+In plain Three.js you create a scene and add meshes. **R3F** maps that to JSX:
 
 ```tsx
 <mesh><boxGeometry /><meshStandardMaterial /></mesh>
 ```
 
-Under the hood, R3F creates Three objects, attaches them to the scene, and reconciles updates when props change. **`useFrame`** runs code **every rendered frame** (like `requestAnimationFrame` tied to the renderer)—ideal for animation and reading input without React state thrash.
+**`useFrame`** runs every animation frame—ideal for moving the camera from keyboard input without React re-renders.
 
-**Takeaway:** R3F does not replace understanding Three.js; it **organizes** it. You still think in scenes, cameras, and materials.
+**Takeaway:** R3F organizes Three.js; you still think in cameras, meshes, and materials.
 
 ---
 
-## Part 4 — One group parented to the camera: parallax without AR tracking
+## Part 4 — First-person navigation: PointerLock + WASD
 
-**Problem:** We want particles to feel “in front of you” and shift slightly when you tilt the phone.
+**Problem:** Move the camera through world space with **WASD** and look with the **mouse**.
 
-**Idea:** Put all particles in a **`THREE.Group`**. Each frame, set that group’s **position** and **base rotation** to match the **camera**. That keeps the swarm in front of the user. Then multiply in a **small extra rotation** from device orientation so tilt adds a subtle offset (parallax).
+**Pieces:**
 
-**Implementation notes (`Scene.tsx`):**
+1. **`PointerLockControls`** (`@react-three/drei`) — Wraps Three’s pointer-lock controls. User **clicks** the canvas; the browser locks the pointer. Mouse deltas rotate the camera. **Esc** unlocks.
+2. **`useFpsMovement` / `applyFpsMovement`** — Each frame, read keys (`KeyW`, `KeyA`, `KeyS`, `KeyD`) and add `camera.position` along **camera-relative** forward and right vectors (`forward = (0,0,-1)`, `right = (1,0,0)` rotated by `camera.quaternion`).
 
-- `useFrame` copies `camera.position` and `camera.quaternion` into the group, then **multiplies** by `parallaxDelta` (a quaternion updated in `useParallax.ts`).
-- **Quaternions** represent rotations without gimbal lock; **slerp** smoothly interpolates toward the target tilt so motion does not jitter.
+This is the same idea as a simple FPS demo: **rotation** from pointer lock, **translation** from keys.
 
-We are still not solving “where is the floor”—we only fake depth with motion cues.
+See `Scene.tsx` and `hooks/useFpsMovement.ts`.
 
 ---
 
 ## Part 5 — Particles: why instanced quads, not spheres
 
-**Requirement:** Hundreds or thousands of glowing specks, 60fps on mobile if possible.
+**Requirement:** Many glowing specks, good frame rate on laptops and phones.
 
 | Approach | Pros | Cons |
 |----------|------|------|
-| Many `Mesh`es | Simple mentally | One draw call each → CPU bottleneck |
-| **Instanced** single mesh | One draw, GPU repeats geometry | Need instanced attributes + custom shader for best control |
-| Points (`Points`) | Cheap | Harder to get soft circular glow; size limits vary |
+| Many `Mesh`es | Simple | One draw call each → bottleneck |
+| **Instanced** single mesh | One draw, GPU repeats geometry | Instanced attributes + shader for billboards |
+| Points (`Points`) | Cheap | Harder to get soft circular glow |
 
-We chose **one `InstancedBufferGeometry`** built from a **plane** (two triangles). Each instance has attributes: **offset** (center), **size**, **seed**, **density**. The vertex shader moves each quad’s corners in **view space** so quads **face the camera**—classic **billboarding**.
-
-**Concept:** **Instancing** means the GPU draws the same triangles N times in one call; each instance reads a different row from the instanced attributes. See `AstrophageField.tsx`.
+We use **one `InstancedBufferGeometry`** from a **plane** (two triangles). Per instance: **offset**, **size**, **seed**, **density**. The vertex shader billboards each quad toward the camera.
 
 ---
 
 ## Part 6 — CPU simulation vs GPU drawing
 
-We split responsibilities on purpose:
-
 | Layer | Responsibility |
 |-------|----------------|
-| **JavaScript (`particleSystem.ts`)** | Integrate forces: curl noise drift, cohesion toward swarm center, repulsion from touch, clamp to a “ribbon” volume. Update **`aOffset`** buffer each frame. |
-| **GPU (shaders)** | Turn each instance into a camera-facing quad; color pixels with radial falloff, pulse, additive red. |
+| **JavaScript (`particleSystem.ts`)** | Curl-noise drift, cohesion toward centroid, soft clamp to a ribbon volume. Update **`aOffset`** each frame. |
+| **GPU (shaders)** | Billboard corners, radial sprite, pulse, additive red. |
 
-**Why not simulate entirely on GPU?** Possible with transform feedback or compute shaders, but not required for MVP. CPU sim is easier to read and tune, and particle counts stay in a range (hundreds–low thousands) where JS is acceptable if we avoid allocations in the hot loop (reuse `Vector3`s).
-
-**Curl noise (high level):** We build smooth 3D noise, then take finite differences to form a **curl** vector field—motion tends to swirl like smoke instead of flowing in one random direction. See comments in `particleSystem.ts`.
+**Curl noise:** Smooth noise → finite differences → **curl** vector field; motion swirls like smoke.
 
 ---
 
-## Part 7 — Shaders: `RawShaderMaterial` and the two stages
+## Part 7 — Shaders: `RawShaderMaterial`
 
-**Vertex shader** — Inputs: per-vertex `position`/`uv`, per-instance `aOffset`, etc. Outputs: `gl_Position` (clip space), and **varyings** (e.g. `vUv`) passed to the fragment stage.
+**Vertex:** Transform instance center, offset corners in view space for billboarding.
 
-We transform the instance center with `modelViewMatrix`, then add `position.xy * aSize` in **view-aligned** space so the quad billboards.
+**Fragment:** Radial mask in UV space, density, pulse, additive color. **Additive blending** stacks brightness for a plasma look.
 
-**Fragment shader** — Inputs: interpolated `vUv` (and others). Outputs: `gl_FragColor` (RGBA). We compute a **radial mask** in UV space (soft circle), multiply by **density**, **pulse** (sin over time + seed), and a red tint. **Additive blending** (`AdditiveBlending`) makes overlaps brighter—good for “plasma” glow.
-
-**RawShaderMaterial:** Three does not prepend its shader chunks; we list `precision`, `uniform` matrices, and `attribute`s explicitly. Trade-off: verbosity for full control (matches learning goals).
+**RawShaderMaterial:** Full GLSL, no Three shader chunks—explicit uniforms and attributes.
 
 Files: `src/shaders/astrophage.vert.glsl`, `astrophage.frag.glsl`.
 
 ---
 
-## Part 8 — Touch: from screen pixels to 3D force
+## Part 8 — Post-processing: bloom and tone mapping
 
-**Problem:** Pointer events give **2D** coordinates. The simulation needs a **3D point** in the same space as particle positions (group local space after parallax).
+- **Bloom** — Blur bright pixels, add back → glow.
+- **ACES Filmic tone mapping** — Roll off highlights so additive stacks do not clip to harsh white.
 
-**Pipeline (`useInteraction.ts`):**
-
-1. Convert client x/y to **NDC** (−1 to 1): normalized device coordinates.
-2. **`Raycaster.setFromCamera(ndc, camera)`** — Builds a ray from the eye through that pixel.
-3. Intersect the ray with a **plane** facing the camera at a chosen distance—an invisible “window” in front of the scene.
-4. Copy the hit point, then **`worldToLocal`** on the parallax group so the point matches where particles live.
-
-The invisible plane in `Scene.tsx` exists so pointer events hit **something**; the math above is what actually drives the simulation.
+See `AstrophageField.tsx`.
 
 ---
 
-## Part 9 — Post-processing: bloom and tone mapping
+## Part 9 — Performance: DPR cap and adaptive quality
 
-After the scene renders to an internal buffer, **post** effects run as full-screen passes.
+**`dpr={[1, dprCap]}`** — Caps device pixel ratio on high-DPI screens.
 
-- **Bloom** — Detects bright pixels, blurs them (mipmap blur here), adds back. Reads as **glow** and light bleed—critical for “emissive swarm” look.
-- **Tone mapping (ACES Filmic)** — Real additive stacks can exceed displayable range. Tone mapping **compresses** highlights smoothly so brights roll off instead of clipping harsh white.
-
-R3F integration: `@react-three/postprocessing` wraps `postprocessing` effects. See `AstrophageField.tsx` (`EffectComposer`, `Bloom`, `ToneMapping`).
+**`usePerformanceScaler.ts`** — Rough FPS sampling adjusts particle count, bloom, and DPR cap.
 
 ---
 
-## Part 10 — Performance: DPR cap and adaptive quality
+## Part 10 — Deploying to GitHub Pages
 
-**Device pixel ratio (DPR):** Retina screens might be 2× or 3×. Rendering at full native resolution costs more fragment shader work. We pass **`dpr={[1, dprCap]}`** on `<Canvas>` so R3F caps effective resolution.
+Vite outputs `dist/`. **Project Pages** URLs look like `https://<user>.github.io/<repo>/`, so asset paths need the repo prefix.
 
-**Adaptive scaler (`usePerformanceScaler.ts`):** A simple **FPS estimate** over half-second windows nudges particle count, bloom strength, and DPR cap down when the frame rate drops, and nudges them up when there is headroom. This is a heuristic, not a formal benchmark—enough to keep mobile web usable.
+**`vite.config.ts`** uses `base` from `VITE_BASE` (default `/` locally). CI sets `VITE_BASE=/<repository-name>/`.
 
----
-
-## Part 11 — Deploying to GitHub Pages
-
-Vite outputs static files in `dist/`. **GitHub Project Pages** serves the site at `https://<user>.github.io/<repo>/`, so asset URLs must include the **repository name** as a path prefix.
-
-**`vite.config.ts`** sets `base` from `VITE_BASE` (default `/` for local dev). CI sets `VITE_BASE=/<repository-name>/` when building.
-
-Workflow **`.github/workflows/pages.yml`** runs `pnpm run build` with that env and deploys `dist/` via GitHub Actions. Enable **Pages → Source: GitHub Actions** in the repository settings. HTTPS is provided—important for camera access in many browsers.
+**`.github/workflows/pages.yml`** builds and deploys. Enable **Pages → GitHub Actions** in repo settings.
 
 ---
 
@@ -175,38 +139,36 @@ Workflow **`.github/workflows/pages.yml`** runs `pnpm run build` with that env a
 
 | File | Concepts |
 |------|----------|
-| `src/App.tsx` | Video + transparent canvas, DPR, Suspense |
-| `src/Scene.tsx` | Camera-follow group, touch plane, parallax multiply |
+| `src/App.tsx` | Canvas, background color, HUD hint, DPR |
+| `src/Scene.tsx` | Pointer lock, WASD movement |
+| `src/hooks/useFpsMovement.ts` | Key state, camera-relative translation |
 | `src/components/AstrophageField.tsx` | Instancing, shaders, composer |
-| `src/systems/particleSystem.ts` | Forces, curl noise, integration |
-| `src/hooks/useCamera.ts` | getUserMedia, cleanup |
-| `src/hooks/useInteraction.ts` | NDC, ray, plane, worldToLocal |
-| `src/hooks/useParallax.ts` | DeviceOrientation, quaternion slerp |
+| `src/systems/particleSystem.ts` | Curl noise, cohesion, integration |
 | `src/hooks/usePerformanceScaler.ts` | FPS sampling, quality tiers |
-| `src/shaders/*.glsl` | Billboard math, sprite shading |
+| `src/shaders/*.glsl` | Billboard, sprite shading |
 
 ---
 
-## Run and reference image
+## Run
 
 ```bash
 pnpm install
 pnpm dev
 ```
 
-Optional: add `public/astrophage.webp` as static art reference next to the running app (not loaded by the shader pipeline).
+Click the scene, then **WASD** + mouse. Optional: `public/astrophage.webp` as offline art reference (not loaded by the app).
 
 ---
 
-## Glossary (quick lookup)
+## Glossary
 
 | Term | One line |
 |------|----------|
 | **Billboard** | Quad always facing the camera. |
-| **NDC** | Clip-space normalized x/y for pointer → ray. |
 | **Instancing** | One geometry, many instances, per-instance attributes. |
-| **Curl noise** | Swirly divergence-free vector field from noise derivatives. |
+| **Curl noise** | Swirly vector field from noise derivatives. |
 | **Bloom** | Blur bright areas, add back → glow. |
 | **Tone mapping** | Map HDR-like values to display range. |
+| **Pointer lock** | Capture mouse for relative look; Esc to exit. |
 
-For line-by-line commentary, read the source files—comments there mirror this tutorial in smaller chunks.
+For shorter notes, see comments in the source files.
