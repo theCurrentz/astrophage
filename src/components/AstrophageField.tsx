@@ -5,18 +5,18 @@ import * as THREE from "three";
 import { ToneMappingMode } from "postprocessing";
 import vert from "../shaders/astrophage.vert.glsl";
 import frag from "../shaders/astrophage.frag.glsl";
-import { createSpaceParticles, stepParticles, type Particle } from "../systems/particleSystem";
+import {
+  createSpaceParticles,
+  resizeParticleArray,
+  stepParticles,
+  type Particle,
+} from "../systems/particleSystem";
+
+const MAX_INSTANCES = 12000;
 
 type Props = { count: number; bloom: number };
 
-/*
-  Instanced rendering: the GPU draws one quad geometry thousands of times.
-  Each "instance" reads its own aOffset/aSize/aSeed/aDensity from per-instance
-  buffers. This is orders of magnitude faster than creating a separate mesh
-  for every particle.
-*/
 export function AstrophageField({ count, bloom }: Props) {
-  const mesh = useRef<THREE.Mesh>(null);
   const particles = useRef<Particle[]>([]);
   const { clock } = useThree();
 
@@ -27,23 +27,18 @@ export function AstrophageField({ count, bloom }: Props) {
     g.setAttribute("position", plane.attributes.position);
     g.setAttribute("uv", plane.attributes.uv);
 
-    const o = new Float32Array(count * 3);
-    const s = new Float32Array(count);
-    const sd = new Float32Array(count);
-    const dn = new Float32Array(count);
+    const o = new Float32Array(MAX_INSTANCES * 3);
+    const s = new Float32Array(MAX_INSTANCES);
+    const sd = new Float32Array(MAX_INSTANCES);
+    const dn = new Float32Array(MAX_INSTANCES);
     g.setAttribute("aOffset", new THREE.InstancedBufferAttribute(o, 3));
     g.setAttribute("aSize", new THREE.InstancedBufferAttribute(s, 1));
     g.setAttribute("aSeed", new THREE.InstancedBufferAttribute(sd, 1));
     g.setAttribute("aDensity", new THREE.InstancedBufferAttribute(dn, 1));
-    g.instanceCount = count;
+    g.instanceCount = MAX_INSTANCES;
     return g;
-  }, [count]);
+  }, []);
 
-  /*
-    RawShaderMaterial: we provide complete GLSL — Three.js does NOT inject
-    its built-in shader chunks. This gives full control over every line of
-    GPU code, which is ideal for learning how shaders really work.
-  */
   const mat = useMemo(
     () =>
       new THREE.RawShaderMaterial({
@@ -58,42 +53,38 @@ export function AstrophageField({ count, bloom }: Props) {
   );
 
   useLayoutEffect(() => {
-    particles.current = createSpaceParticles(count);
-    const g = mesh.current?.geometry as THREE.InstancedBufferGeometry | undefined;
-    if (!g) return;
+    const prev = particles.current;
+    particles.current =
+      prev.length === 0 ? createSpaceParticles(count) : resizeParticleArray(prev, count);
+    const g = geom;
+    g.instanceCount = count;
     const p = particles.current;
     const off = g.attributes.aOffset as THREE.InstancedBufferAttribute;
     const sz = g.attributes.aSize as THREE.InstancedBufferAttribute;
     const sd = g.attributes.aSeed as THREE.InstancedBufferAttribute;
     const dn = g.attributes.aDensity as THREE.InstancedBufferAttribute;
-    for (let i = 0; i < p.length; i++) {
+    for (let i = 0; i < count; i++) {
       off.setXYZ(i, p[i].position.x, p[i].position.y, p[i].position.z);
       sz.setX(i, p[i].size);
       sd.setX(i, p[i].seed);
       dn.setX(i, p[i].density);
     }
     off.needsUpdate = sz.needsUpdate = sd.needsUpdate = dn.needsUpdate = true;
-  }, [count]);
+  }, [count, geom]);
 
   useFrame((_, dt) => {
     const p = particles.current;
-    if (!p.length) return;
+    if (!p.length || count === 0) return;
     stepParticles(p, dt, clock.elapsedTime);
-    const off = mesh.current?.geometry.attributes.aOffset as THREE.InstancedBufferAttribute | undefined;
-    if (!off) return;
-    for (let i = 0; i < p.length; i++) off.setXYZ(i, p[i].position.x, p[i].position.y, p[i].position.z);
+    const off = geom.attributes.aOffset as THREE.InstancedBufferAttribute;
+    for (let i = 0; i < count; i++) off.setXYZ(i, p[i].position.x, p[i].position.y, p[i].position.z);
     off.needsUpdate = true;
     mat.uniforms.uTime.value = clock.elapsedTime;
   });
 
   return (
     <>
-      <mesh ref={mesh} geometry={geom} material={mat} frustumCulled={false} renderOrder={1} />
-      {/*
-        Post-processing pipeline:
-        1. Bloom: extracts bright pixels, blurs them, adds back → glow halo
-        2. ToneMapping: compresses HDR values to display range (ACES = filmic rolloff)
-      */}
+      <mesh geometry={geom} material={mat} frustumCulled={false} renderOrder={1} />
       <EffectComposer multisampling={0}>
         <Bloom intensity={bloom} luminanceThreshold={0.08} mipmapBlur radius={0.85} levels={7} />
         <ToneMapping mode={ToneMappingMode.ACES_FILMIC} whitePoint={5.0} middleGrey={0.6} />

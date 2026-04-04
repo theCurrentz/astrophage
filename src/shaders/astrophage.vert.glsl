@@ -36,8 +36,8 @@ void main() {
     Gentle vertex-level wobble: each particle sways on its own phase.
     The amplitudes are tiny (0.02 units) so the motion reads as a calm drift.
   */
-  float wobble = sin(uTime * 0.4 + aSeed * 0.02) * 0.02
-               + cos(uTime * 0.3 + aSeed * 0.015) * 0.015;
+  float wobble = sin(uTime * 0.22 + aSeed * 0.02) * 0.008
+               + cos(uTime * 0.18 + aSeed * 0.015) * 0.006;
 
   vec3 off = aOffset + vec3(wobble, wobble * 0.7, wobble * 0.5);
 
