@@ -5,23 +5,16 @@ import * as THREE from "three";
 import { ToneMappingMode } from "postprocessing";
 import vert from "../shaders/astrophage.vert.glsl";
 import frag from "../shaders/astrophage.frag.glsl";
-import { createBandParticles, stepParticles, type Particle } from "../systems/particleSystem";
+import { createSpaceParticles, stepParticles, type Particle } from "../systems/particleSystem";
 
-type Props = {
-  count: number;
-  bloom: number;
-};
+type Props = { count: number; bloom: number };
 
-/**
- * Draws thousands of **instanced** quads in one draw call.
- *
- * **Instancing:** GPU repeats the same triangle list `instanceCount` times. Each instance
- * reads different attributes (offset, size, …). Much faster than one mesh per particle.
- *
- * Particles live in **world space** at the origin; the camera moves through them (FPS controls).
- *
- * **RawShaderMaterial:** we supply full GLSL (Three’s built-in chunks are not prepended).
- */
+/*
+  Instanced rendering: the GPU draws one quad geometry thousands of times.
+  Each "instance" reads its own aOffset/aSize/aSeed/aDensity from per-instance
+  buffers. This is orders of magnitude faster than creating a separate mesh
+  for every particle.
+*/
 export function AstrophageField({ count, bloom }: Props) {
   const mesh = useRef<THREE.Mesh>(null);
   const particles = useRef<Particle[]>([]);
@@ -33,6 +26,7 @@ export function AstrophageField({ count, bloom }: Props) {
     g.index = plane.index;
     g.setAttribute("position", plane.attributes.position);
     g.setAttribute("uv", plane.attributes.uv);
+
     const o = new Float32Array(count * 3);
     const s = new Float32Array(count);
     const sd = new Float32Array(count);
@@ -45,6 +39,11 @@ export function AstrophageField({ count, bloom }: Props) {
     return g;
   }, [count]);
 
+  /*
+    RawShaderMaterial: we provide complete GLSL — Three.js does NOT inject
+    its built-in shader chunks. This gives full control over every line of
+    GPU code, which is ideal for learning how shaders really work.
+  */
   const mat = useMemo(
     () =>
       new THREE.RawShaderMaterial({
@@ -52,7 +51,6 @@ export function AstrophageField({ count, bloom }: Props) {
         fragmentShader: frag,
         uniforms: { uTime: { value: 0 } },
         transparent: true,
-        // Additive glow: skip depth write so layers stack visually (ordering is approximate).
         depthWrite: false,
         blending: THREE.AdditiveBlending,
       }),
@@ -60,7 +58,7 @@ export function AstrophageField({ count, bloom }: Props) {
   );
 
   useLayoutEffect(() => {
-    particles.current = createBandParticles(count);
+    particles.current = createSpaceParticles(count);
     const g = mesh.current?.geometry as THREE.InstancedBufferGeometry | undefined;
     if (!g) return;
     const p = particles.current;
@@ -74,10 +72,7 @@ export function AstrophageField({ count, bloom }: Props) {
       sd.setX(i, p[i].seed);
       dn.setX(i, p[i].density);
     }
-    off.needsUpdate = true;
-    sz.needsUpdate = true;
-    sd.needsUpdate = true;
-    dn.needsUpdate = true;
+    off.needsUpdate = sz.needsUpdate = sd.needsUpdate = dn.needsUpdate = true;
   }, [count]);
 
   useFrame((_, dt) => {
@@ -95,13 +90,13 @@ export function AstrophageField({ count, bloom }: Props) {
     <>
       <mesh ref={mesh} geometry={geom} material={mat} frustumCulled={false} renderOrder={1} />
       {/*
-        Post stack runs after the scene render:
-        - Bloom: blur bright pixels and add them back → glow / “volumetric” read.
-        - Tone mapping: squeeze HDR brightness into display range (ACES filmic = film-like rolloff).
+        Post-processing pipeline:
+        1. Bloom: extracts bright pixels, blurs them, adds back → glow halo
+        2. ToneMapping: compresses HDR values to display range (ACES = filmic rolloff)
       */}
       <EffectComposer multisampling={0}>
-        <Bloom intensity={bloom} luminanceThreshold={0.15} mipmapBlur radius={0.92} />
-        <ToneMapping mode={ToneMappingMode.ACES_FILMIC} whitePoint={4.2} middleGrey={0.62} />
+        <Bloom intensity={bloom} luminanceThreshold={0.08} mipmapBlur radius={0.85} levels={7} />
+        <ToneMapping mode={ToneMappingMode.ACES_FILMIC} whitePoint={5.0} middleGrey={0.6} />
       </EffectComposer>
     </>
   );

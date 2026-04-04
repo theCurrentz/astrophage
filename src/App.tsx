@@ -3,15 +3,23 @@ import { Suspense } from "react";
 import { Scene } from "./Scene";
 import { usePerformanceScaler } from "./hooks/usePerformanceScaler";
 
-/**
- * Full-screen **3D** view only: no camera feed. The canvas uses an opaque clear
- * (default) so the void behind the swarm reads as deep black-red.
- */
+/*
+  App: the root component. Sets up:
+    - A full-screen dark container (pure black for space)
+    - The R3F <Canvas> with performance-tuned settings
+    - A HUD overlay with movement instructions
+
+  The Canvas props control WebGL behavior:
+    - dpr: device pixel ratio range (adaptive via usePerformanceScaler)
+    - gl.antialias: off because bloom already softens edges
+    - camera: positioned inside the particle field, looking into the void
+    - far: 100 units so distant stars and nebulae are visible
+*/
 export function App() {
   const { particleCount, bloom, dprCap } = usePerformanceScaler();
 
   return (
-    <div style={{ position: "fixed", inset: 0, background: "#050000" }}>
+    <div style={{ position: "fixed", inset: 0, background: "#000" }}>
       <div
         style={{
           position: "absolute",
@@ -19,7 +27,7 @@ export function App() {
           top: 12,
           left: 12,
           right: 12,
-          color: "rgba(255,200,190,0.85)",
+          color: "rgba(255,180,170,0.8)",
           fontSize: 13,
           fontFamily: "system-ui, sans-serif",
           pointerEvents: "none",
@@ -32,9 +40,9 @@ export function App() {
         dpr={[1, dprCap]}
         gl={{ antialias: false, powerPreference: "high-performance" }}
         style={{ position: "absolute", inset: 0, touchAction: "none" }}
-        camera={{ position: [0, 0.15, 2.8], fov: 60, near: 0.08, far: 100 }}
+        camera={{ position: [0, 0, 3], fov: 65, near: 0.05, far: 100 }}
       >
-        <color attach="background" args={["#030000"]} />
+        <color attach="background" args={["#000000"]} />
         <Suspense fallback={null}>
           <Scene particleCount={particleCount} bloom={bloom} />
         </Suspense>

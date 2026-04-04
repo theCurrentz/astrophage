@@ -1,23 +1,28 @@
 precision highp float;
 
-// RawShaderMaterial: Three.js does not inject chunks; we declare matrices explicitly.
+/*
+  RawShaderMaterial: Three.js does NOT prepend its standard chunks here.
+  We must declare every uniform and attribute ourselves.
+
+  Uniforms = values the CPU sends once per frame (same for all vertices).
+  Attributes = per-vertex (or per-instance) data stored in GPU buffers.
+  Varyings = outputs interpolated across each triangle for the fragment shader.
+*/
+
 uniform float uTime;
-uniform mat4 modelMatrix;
-uniform mat4 modelViewMatrix;
-uniform mat4 projectionMatrix;
-uniform vec3 cameraPosition;
+uniform mat4 modelViewMatrix;   // world → camera (eye) space
+uniform mat4 projectionMatrix;  // eye space → clip space (perspective divide)
 
-attribute vec3 position;
-attribute vec2 uv;
-// Per-instance attributes (one row per particle). aOffset = world-space center of this quad.
-attribute vec3 aOffset;
-attribute float aSize;
-attribute float aSeed;
-attribute float aDensity;
+attribute vec3 position;  // quad corner in local space (−0.5 … 0.5)
+attribute vec2 uv;        // texture coordinate (0 … 1)
 
-// varyings pass data from vertex → fragment shader (interpolated across the triangle).
+// Per-instance data — one value per particle, not per vertex.
+attribute vec3 aOffset;   // world-space center of this particle
+attribute float aSize;    // billboard radius
+attribute float aSeed;    // random phase so particles don't pulse in sync
+attribute float aDensity; // brightness multiplier
+
 varying vec2 vUv;
-varying vec3 vViewDir;
 varying float vSeed;
 varying float vDensity;
 varying float vDepthFade;
@@ -27,26 +32,31 @@ void main() {
   vSeed = aSeed;
   vDensity = aDensity;
 
-  // Tiny procedural motion so particles feel alive even before CPU updates arrive.
-  float wobble = sin(uTime * 1.4 + aSeed * 0.02) * 0.012
-    + cos(uTime * 0.9 + aSeed * 0.015) * 0.008;
+  /*
+    Gentle vertex-level wobble: each particle sways on its own phase.
+    The amplitudes are tiny (0.02 units) so the motion reads as a calm drift.
+  */
+  float wobble = sin(uTime * 0.4 + aSeed * 0.02) * 0.02
+               + cos(uTime * 0.3 + aSeed * 0.015) * 0.015;
 
-  vec3 off = aOffset + vec3(wobble, wobble * 0.6, wobble * 0.4);
+  vec3 off = aOffset + vec3(wobble, wobble * 0.7, wobble * 0.5);
 
-  // modelViewMatrix transforms world → eye space (camera at origin looking down −Z).
+  /*
+    Transform to eye (camera) space. In eye space the camera sits at the origin
+    looking down −Z. We then offset by the quad's local position scaled by aSize.
+    This is the "billboard" trick: the quad always faces the camera because we
+    move its corners in screen-aligned XY.
+  */
   vec4 mvPosition = modelViewMatrix * vec4(off, 1.0);
-
-  // Billboard in *view* space: offset quad corners along camera-right and camera-up.
-  // Equivalent to “always face camera” without building a full rotation matrix per instance.
   mvPosition.xy += position.xy * aSize;
 
-  vec3 worldPos = (modelMatrix * vec4(off, 1.0)).xyz;
-  vViewDir = normalize(cameraPosition - worldPos);
-
-  // Fade particles that are very far along −Z so depth reads as fog (cheap volumetric hint).
+  /*
+    Depth fade: particles far from the camera fade out, giving a sense of
+    atmospheric depth (cheap fog). smoothstep(far, near, depth) returns 0 at
+    `far` and 1 at `near`.
+  */
   float vz = -mvPosition.z;
-  vDepthFade = mix(0.28, 1.0, smoothstep(4.5, 1.0, vz));
+  vDepthFade = mix(0.15, 1.0, smoothstep(25.0, 1.0, vz));
 
-  // Clip space: GPU divides by W for perspective; gl_Position is required output.
   gl_Position = projectionMatrix * mvPosition;
 }
