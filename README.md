@@ -83,6 +83,8 @@ See `Scene.tsx` and `hooks/useFpsMovement.ts`.
 
 We use **one `InstancedBufferGeometry`** from a **plane** (two triangles). Per instance: **offset**, **size**, **seed**, **density**. The vertex shader billboards each quad toward the camera.
 
+**Concept:** **Instancing** means the GPU draws the same triangles N times in one call; each instance reads a different row from the instanced attributes.
+
 ---
 
 ## Part 6 — CPU simulation vs GPU drawing
@@ -93,6 +95,8 @@ We use **one `InstancedBufferGeometry`** from a **plane** (two triangles). Per i
 | **GPU (shaders)** | Billboard corners, radial sprite, pulse, additive red. |
 
 **Curl noise:** Smooth noise → finite differences → **curl** vector field; motion swirls like smoke.
+
+**Why not simulate entirely on GPU?** Possible with compute shaders; CPU sim is easier to read and tune at these particle counts.
 
 ---
 
