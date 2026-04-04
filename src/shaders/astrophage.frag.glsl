@@ -1,35 +1,72 @@
 precision highp float;
 
+/*
+  Fragment shader: runs once per pixel covered by a quad.
+  Its job: decide the final color and transparency of that pixel.
+
+  Astrophage emit infrared radiation. In "Project Hail Mary" they glow
+  deep red. We model each particle as a soft, bokeh-like disc with:
+    - A bright hot core (white-ish center fading to deep red)
+    - Smooth circular falloff (gaussian-ish)
+    - Per-instance pulse so the swarm shimmers organically
+*/
+
 uniform float uTime;
 
 varying vec2 vUv;
-varying vec3 vViewDir;
 varying float vSeed;
 varying float vDensity;
 varying float vDepthFade;
 
 void main() {
-  // Radial mask in UV space: quad is 0…1; center is 0.5,0.5 → soft circular sprite.
-  float d = length(vUv - 0.5);
-  float alpha = smoothstep(0.5, 0.0, d);
+  /*
+    Distance from quad center (UV 0.5, 0.5).
+    This creates the circular shape on a square quad.
+  */
+  float d = length(vUv - 0.5) * 2.0;  // 0 at center, 1 at edge
 
-  // Rim emphasis: brighter at the silhouette (Fresnel-like, faked from UV radius here).
-  float fresnel = pow(1.0 - smoothstep(0.0, 0.45, d), 3.0);
+  /*
+    Bokeh shape: a wide gaussian falloff gives the soft out-of-focus
+    look visible in the reference images. exp(-x^2) is the bell curve.
+  */
+  float bokeh = exp(-d * d * 3.5);
 
-  // Phase varies per instance (vSeed) so the swarm does not blink in sync.
-  float pulse = sin(uTime * 2.0 + vSeed * 0.01) * 0.5 + 0.5;
-  float brightness = alpha * vDensity * pulse * (0.65 + fresnel * 0.85) * vDepthFade;
+  /*
+    Hot core: a tighter gaussian makes the very center brighter,
+    mimicking the overexposed center of a bokeh highlight.
+  */
+  float core = exp(-d * d * 12.0);
 
-  // Subtle “heat” variation across the quad (stretch goal: localized hot zones).
-  float heat = sin(vUv.x * 12.0 + vUv.y * 9.0 + uTime * 0.3) * 0.08 + 1.0;
-  brightness *= heat;
+  /*
+    Per-instance pulse: each particle brightens and dims on its own cycle.
+    The seed offsets the phase so neighbouring particles don't blink together.
+  */
+  float pulse = sin(uTime * 0.8 + vSeed * 0.03) * 0.15 + 0.85;
 
-  vec3 color = vec3(1.0, 0.1, 0.02) * brightness;
+  float brightness = (bokeh * 0.7 + core * 1.2) * vDensity * pulse * vDepthFade;
 
-  // Fake occlusion hint: slightly darker toward card edges (vignette on the sprite).
-  float edge = smoothstep(0.48, 0.2, min(abs(vUv.x - 0.5), abs(vUv.y - 0.5)) * 2.0);
-  color *= mix(0.55, 1.0, edge);
+  /*
+    Color ramp: the core is hot (pinkish-white) and fades to deep red
+    at the edges. mix() linearly interpolates between two colors.
+    Deep red base = (1.0, 0.04, 0.0) — almost pure red channel.
+    Hot core tint = (1.0, 0.35, 0.2) — adds warmth.
+  */
+  vec3 deepRed = vec3(1.0, 0.04, 0.0);
+  vec3 hotCore = vec3(1.0, 0.4, 0.25);
+  vec3 color = mix(deepRed, hotCore, core) * brightness;
 
-  // Premultiplied-friendly alpha for additive blending in the material.
-  gl_FragColor = vec4(color, alpha * 0.92 * vDepthFade);
+  /*
+    Alpha: the bokeh falloff drives transparency.
+    Additive blending (set on the material) means alpha mostly controls
+    how much this pixel contributes to the glow stack.
+  */
+  float alpha = bokeh * 0.85 * vDepthFade;
+
+  /*
+    Discard fully transparent fragments to save the GPU from blending
+    invisible pixels (early-out optimization).
+  */
+  if (alpha < 0.005) discard;
+
+  gl_FragColor = vec4(color, alpha);
 }
