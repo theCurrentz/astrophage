@@ -13,8 +13,14 @@ type Props = {
 };
 
 /**
- * Instanced billboard quads + post stack. Particles live in **world space** at the origin;
- * the camera moves through them via `Scene` (FPS controls).
+ * Draws thousands of **instanced** quads in one draw call.
+ *
+ * **Instancing:** GPU repeats the same triangle list `instanceCount` times. Each instance
+ * reads different attributes (offset, size, …). Much faster than one mesh per particle.
+ *
+ * Particles live in **world space** at the origin; the camera moves through them (FPS controls).
+ *
+ * **RawShaderMaterial:** we supply full GLSL (Three’s built-in chunks are not prepended).
  */
 export function AstrophageField({ count, bloom }: Props) {
   const mesh = useRef<THREE.Mesh>(null);
@@ -46,6 +52,7 @@ export function AstrophageField({ count, bloom }: Props) {
         fragmentShader: frag,
         uniforms: { uTime: { value: 0 } },
         transparent: true,
+        // Additive glow: skip depth write so layers stack visually (ordering is approximate).
         depthWrite: false,
         blending: THREE.AdditiveBlending,
       }),
@@ -87,6 +94,11 @@ export function AstrophageField({ count, bloom }: Props) {
   return (
     <>
       <mesh ref={mesh} geometry={geom} material={mat} frustumCulled={false} renderOrder={1} />
+      {/*
+        Post stack runs after the scene render:
+        - Bloom: blur bright pixels and add them back → glow / “volumetric” read.
+        - Tone mapping: squeeze HDR brightness into display range (ACES filmic = film-like rolloff).
+      */}
       <EffectComposer multisampling={0}>
         <Bloom intensity={bloom} luminanceThreshold={0.15} mipmapBlur radius={0.92} />
         <ToneMapping mode={ToneMappingMode.ACES_FILMIC} whitePoint={4.2} middleGrey={0.62} />
