@@ -30,9 +30,7 @@ export function Scene({ particleCount, bloom }: Props) {
 
       <Stars radius={80} depth={60} count={3000} factor={3} saturation={0} fade speed={0.3} />
 
-      <NebulaArc position={[0, 2, -15]} rotation={[0.1, 0, 0.15]} scale={[35, 10, 1]} />
-      <NebulaArc position={[5, -3, -20]} rotation={[-0.2, 0.3, -0.1]} scale={[40, 12, 1]} />
-      <NebulaArc position={[-8, 1, -12]} rotation={[0.05, -0.2, 0.3]} scale={[25, 8, 1]} />
+      <NebulaArc />
 
       <AstrophageField count={particleCount} bloom={bloom} />
     </>

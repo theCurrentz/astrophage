@@ -17,38 +17,48 @@ export type Particle = {
  * initial drift velocity, and visual attributes (size, density, seed) that the
  * GPU shaders use for variation.
  */
-export function createSpaceParticles(count: number): Particle[] {
-  const particles: Particle[] = [];
+function spawnSpaceParticle(): Particle {
   const radius = 18;
+  let x: number, y: number, z: number;
+  do {
+    x = (Math.random() * 2 - 1) * radius;
+    y = (Math.random() * 2 - 1) * radius;
+    z = (Math.random() * 2 - 1) * radius;
+  } while (x * x + y * y + z * z > radius * radius);
 
-  for (let i = 0; i < count; i++) {
-    let x: number, y: number, z: number;
-    do {
-      x = (Math.random() * 2 - 1) * radius;
-      y = (Math.random() * 2 - 1) * radius;
-      z = (Math.random() * 2 - 1) * radius;
-    } while (x * x + y * y + z * z > radius * radius);
+  const seed = Math.random() * 1000;
+  const r = Math.random();
 
-    const seed = Math.random() * 1000;
-    const r = Math.random();
-
-    particles.push({
-      position: new THREE.Vector3(x, y, z),
-      velocity: new THREE.Vector3(
-        (Math.random() - 0.5) * 0.003,
-        (Math.random() - 0.5) * 0.003,
-        (Math.random() - 0.5) * 0.003,
-      ),
-      seed,
-      size: r < 0.05
+  return {
+    position: new THREE.Vector3(x, y, z),
+    velocity: new THREE.Vector3(
+      (Math.random() - 0.5) * 0.003,
+      (Math.random() - 0.5) * 0.003,
+      (Math.random() - 0.5) * 0.003,
+    ),
+    seed,
+    size:
+      r < 0.05
         ? THREE.MathUtils.lerp(0.12, 0.35, Math.random())
         : r < 0.3
           ? THREE.MathUtils.lerp(0.04, 0.12, Math.random())
           : THREE.MathUtils.lerp(0.008, 0.04, Math.random()),
-      density: THREE.MathUtils.lerp(0.6, 1.5, Math.random()),
-    });
-  }
+    density: THREE.MathUtils.lerp(0.6, 1.5, Math.random()),
+  };
+}
+
+export function createSpaceParticles(count: number): Particle[] {
+  const particles: Particle[] = [];
+  for (let i = 0; i < count; i++) particles.push(spawnSpaceParticle());
   return particles;
+}
+
+export function resizeParticleArray(particles: Particle[], newCount: number): Particle[] {
+  if (newCount === particles.length) return particles;
+  if (newCount < particles.length) return particles.slice(0, newCount);
+  const next = particles.slice();
+  while (next.length < newCount) next.push(spawnSpaceParticle());
+  return next;
 }
 
 /**
@@ -59,7 +69,7 @@ export function createSpaceParticles(count: number): Particle[] {
  */
 export function stepParticles(particles: Particle[], dt: number, time: number) {
   const limit = 20;
-  const cdt = Math.min(dt, 0.05);
+  const cdt = Math.min(dt, 1 / 120);
 
   for (const p of particles) {
     const wobbleX = Math.sin(time * 0.15 + p.seed * 0.1) * 0.0004;
