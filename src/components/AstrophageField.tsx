@@ -1,6 +1,6 @@
 import { useFrame, useThree } from "@react-three/fiber";
 import { Bloom, EffectComposer, ToneMapping } from "@react-three/postprocessing";
-import { useLayoutEffect, useEffect, useMemo, useRef } from "react";
+import { useLayoutEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import { ToneMappingMode } from "postprocessing";
 import vert from "../shaders/astrophage.vert.glsl";
@@ -9,8 +9,6 @@ import { createBandParticles, stepParticles, type Particle } from "../systems/pa
 
 type Props = {
   count: number;
-  touchWorld: React.RefObject<THREE.Vector3>;
-  touchActive: React.RefObject<boolean>;
   bloom: number;
 };
 
@@ -20,10 +18,11 @@ type Props = {
  * **Instancing:** GPU repeats the same triangle list `instanceCount` times. Each instance
  * reads different attributes (offset, size, …). Much faster than one mesh per particle.
  *
+ * Particles live in **world space** at the origin; the camera moves through them (FPS controls).
+ *
  * **RawShaderMaterial:** we supply full GLSL (Three’s built-in chunks are not prepended).
- * Trade-off: a few more uniform declarations, total control over the pipeline.
  */
-export function AstrophageField({ count, touchWorld, touchActive, bloom }: Props) {
+export function AstrophageField({ count, bloom }: Props) {
   const mesh = useRef<THREE.Mesh>(null);
   const particles = useRef<Particle[]>([]);
   const { clock } = useThree();
@@ -60,12 +59,6 @@ export function AstrophageField({ count, touchWorld, touchActive, bloom }: Props
     [],
   );
 
-  useEffect(() => {
-    const m = mesh.current;
-    // Let pointer events hit the invisible plane behind us, not this dense particle cloud.
-    if (m) m.raycast = () => {};
-  }, []);
-
   useLayoutEffect(() => {
     particles.current = createBandParticles(count);
     const g = mesh.current?.geometry as THREE.InstancedBufferGeometry | undefined;
@@ -90,7 +83,7 @@ export function AstrophageField({ count, touchWorld, touchActive, bloom }: Props
   useFrame((_, dt) => {
     const p = particles.current;
     if (!p.length) return;
-    stepParticles(p, dt, clock.elapsedTime, touchWorld.current!, touchActive.current ?? false);
+    stepParticles(p, dt, clock.elapsedTime);
     const off = mesh.current?.geometry.attributes.aOffset as THREE.InstancedBufferAttribute | undefined;
     if (!off) return;
     for (let i = 0; i < p.length; i++) off.setXYZ(i, p[i].position.x, p[i].position.y, p[i].position.z);
