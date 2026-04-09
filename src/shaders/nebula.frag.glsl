@@ -35,8 +35,10 @@ void main() {
   float y = uv.y - 0.5;
 
   float t = uTime * 0.02;
-  float arc = sin(x * 1.4 + t * 0.5) * 0.08 + (fbm(vec2(x * 0.8 + t * 0.15, 2.1)) - 0.5) * 0.04;
-  float w = 0.22 + fbm(vec2(x * 1.2, t)) * 0.04;
+  float bow = sin(x * 3.14159265 + t * 0.12) * 0.2;
+  float wiggle = (fbm(vec2(x * 0.85 + t * 0.15, 2.1)) - 0.5) * 0.05;
+  float arc = bow + wiggle;
+  float w = 0.2 + fbm(vec2(x * 1.2, t)) * 0.05;
   float d = abs(y - arc);
   float core = exp(-d * d / (w * w)) * 0.55;
   float haze = exp(-d * d / ((w * 2.2) * (w * 2.2))) * 0.25;

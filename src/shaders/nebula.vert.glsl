@@ -17,5 +17,8 @@ varying vec2 vUv;
 
 void main() {
   vUv = uv;
-  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  float u = position.x + 0.5;
+  float bow = sin(u * 3.14159265) * 0.18;
+  vec3 pos = vec3(position.x, position.y + bow, position.z);
+  gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
 }
