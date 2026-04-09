@@ -2,6 +2,7 @@ import { PointerLockControls, Stars } from "@react-three/drei";
 import { useFrame, useThree } from "@react-three/fiber";
 import { AstrophageField } from "./components/AstrophageField";
 import { NebulaArc } from "./components/NebulaArc";
+import { TurretBlasters } from "./components/TurretBlasters";
 import { applyFpsMovement, useFpsMovement } from "./hooks/useFpsMovement";
 
 type Props = { particleCount: number; bloom: number };
@@ -31,6 +32,8 @@ export function Scene({ particleCount, bloom }: Props) {
       <Stars radius={80} depth={60} count={3000} factor={3} saturation={0} fade speed={0.3} />
 
       <NebulaArc />
+
+      <TurretBlasters />
 
       <AstrophageField count={particleCount} bloom={bloom} />
     </>
