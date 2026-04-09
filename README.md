@@ -41,7 +41,7 @@ src/
 
 ---
 
-## Concepts Explained (for Students)
+## Concepts Explained
 
 ### 1. Instanced Rendering
 
