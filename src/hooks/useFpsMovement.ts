@@ -46,6 +46,11 @@ export function applyFpsMovement(
   if (keys.has("KeyS")) move.sub(forward);
   if (keys.has("KeyA")) move.sub(right);
   if (keys.has("KeyD")) move.add(right);
-  if (move.lengthSq() > 0) move.normalize().multiplyScalar(speed * dt);
+  const mult = keys.has("ShiftLeft") || keys.has("ShiftRight") ? 2.35 : 1;
+  if (move.lengthSq() > 0) move.normalize().multiplyScalar(speed * mult * dt);
   camera.position.add(move);
+}
+
+export function isBoostHeld() {
+  return keys.has("ShiftLeft") || keys.has("ShiftRight");
 }

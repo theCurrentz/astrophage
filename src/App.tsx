@@ -34,7 +34,8 @@ export function App() {
           textShadow: "0 0 8px rgba(0,0,0,0.9)",
         }}
       >
-        Click the scene, then <strong>W A S D</strong> to move · mouse to look · <strong>Esc</strong> unlocks cursor
+        Click the scene, then <strong>W A S D</strong> to move · hold <strong>Shift</strong> to boost · mouse to look ·{" "}
+        <strong>Esc</strong> unlocks cursor
       </div>
       <Canvas
         dpr={[1, dprCap]}
